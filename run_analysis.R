@@ -1,41 +1,56 @@
 library(dplyr)
 library(magrittr)
+library(data.table)
+library(reshape2)
+
+#Download all the data
+url <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+download.file(url, file.path(getwd(), 'CourseraData.zip'))
+unzip('CourseraData.zip')
+
 #First we read in all the data
-a <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\train\\X_train.txt")
-b <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\train\\y_train.txt")
-c <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\train\\subject_train.txt")
-a2 <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\test\\X_test.txt")
-b2 <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\test\\y_test.txt")
-c2 <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\test\\subject_test.txt")
-fnames <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\features.txt")
-activities <- fread("C:\\Users\\u576u1\\Downloads\\getdata_projectfiles_UCI HAR Dataset\\UCI HAR Dataset\\activity_labels.txt")
+x_train <- fread("UCI HAR Dataset\\train\\X_train.txt")
+y_train <- fread("UCI HAR Dataset\\train\\y_train.txt")
+subject_train <- fread("UCI HAR Dataset\\train\\subject_train.txt")
+x_test <- fread("UCI HAR Dataset\\test\\X_test.txt")
+y_test <- fread("UCI HAR Dataset\\test\\y_test.txt")
+subject_test <- fread("UCI HAR Dataset\\test\\subject_test.txt")
+feat_names <- fread("UCI HAR Dataset\\features.txt")
+activities <- fread("UCI HAR Dataset\\activity_labels.txt")
 
 #Next I give proper names the the activity and subject columns to distinguish them when I join
-names(c) <- "Subject"
-names(c2) <- "Subject"
-b <- left_join(b,activities)
-b2 <- left_join(b2,activities)
-names(b) <- c("Activity_Index", "Activity_Name")
-names(b2) <- c("Activity_Index", "Activity_Name")
-names(a) <- fnames$V2
-names(a2) <- fnames$V2
+names(subject_train) <- "Subject"
+names(subject_test) <- "Subject"
+y_train <- left_join(y_train,activities)
+y_test <- left_join(y_test,activities)
+names(y_train) <- c("Activity_Index", "Activity_Name")
+names(y_test) <- c("Activity_Index", "Activity_Name")
+names(x_train) <- feat_names$V2
+names(x_test) <- feat_names$V2
+#We can drop the Index column now that names are on the data
+y_train$Activity_Index <- NULL
+y_test$Activity_Index <- NULL
 
 #Drop all but mean and std measurements
-a <- a[,c(1:6, 41:46, 81:86, 121:126, 161:166,201,202,214,215,227,228,240,241,253,254,
-           266:271,345:350,424:429, 503,504,516,517,529,530,542,543)]
-a2 <- a2[,c(1:6, 41:46, 81:86, 121:126, 161:166,201,202,214,215,227,228,240,241,253,254,
-          266:271,345:350,424:429, 503,504,516,517,529,530,542,543)]
+x_train <- x_train[,grep("(mean|std)\\(\\)",names(x_train)), with=FALSE]
+x_test <- x_test[,grep("(mean|std)\\(\\)",names(x_test)), with=FALSE]
 
 
 #Next I add the activity and subject indicator to the data
-train <- cbind(c,b,a)
-test <- cbind(c2,b2,a2)
+train <- cbind(subject_train,y_train,x_train)
+test <- cbind(subject_test,y_test,x_test)
 
 #Now I join the test and train datasets together
 data <- rbind(train,test)
 
 #Clean up the environment
-rm(a,b,c,a2,b2,c2,train,test, fnames, activities)
+rm(x_test,y_test,subject_test,x_train,y_train,subject_train,train,test, feat_names, activities)
 
-AvgByParticipant <- data[,-c("Activity_Index","Activity_Name")] %>% group_by(Subject) %>% summarise_all(mean)
-AvgByActivity <- data[,-c("Subject")] %>% group_by(Activity_Name) %>% summarise_all(mean)
+
+#Expand and resummarize data to get one row for each subject and activity combo
+data_melt <- melt(data = data, id = c("Subject", "Activity_Name"))
+data_tidy <- dcast(data = data_melt, Subject + Activity_Name ~ variable, fun.aggregate = mean)
+
+
+#Write final data set to working directory
+fwrite(x = data_tidy, file = "tidyData.txt", quote = FALSE)
